@@ -21,6 +21,7 @@ endpoints = {
     'subscribe': 'user/podcast/subscribe',
     'unsubscribe': 'user/podcast/unsubscribe',
     'episode_archive': 'sync/update_episode_archive',
+    'episode_star': 'synce/update_episode_star',
     'up_next': 'up_next/list',
     'play_status': 'sync/update_episode',
     'play_next': 'up_next/play_next',
@@ -91,6 +92,33 @@ class Episode:
                                  'position': 0
                                  }
                            ):
+            return True
+        return False
+
+    def add_star(self) -> bool:
+        endpoint = _get_endpoint("episode_star")
+        url = _make_url(base=self._api._api_base, endpoint=endpoint)
+        if self._api._post(url=url,
+                           data={'episodes': [
+                               {'uuid': self.uuid,
+                                'podcast': self.podcast.uuid
+                                }
+                           ],
+                               'star': True}):
+            return True
+        return False
+
+    def remove_star(self) -> bool:
+        endpoint = _get_endpoint("episode_star")
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        if self._api._post(url=url,
+                           data={'episodes': [
+                               {'uuid': self.uuid,
+                                'podcast': self.podcast.uuid
+                                }
+                           ],
+                               'star': False}):
             return True
         return False
 
