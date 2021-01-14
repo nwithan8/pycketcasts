@@ -1,9 +1,13 @@
 from datetime import datetime
 from typing import List, Union
+import ntpath
+import magic
+import os
 
 import requests
 
 endpoints = {
+    'login': 'user/login',
     'list': 'user/podcast/list',
     'new_releases': 'user/new_releases',
     'in_progress': 'user/in_progress',
@@ -29,7 +33,9 @@ endpoints = {
     'play_next': 'up_next/play_next',
     'play_last': 'up_next/play_last',
     'share': 'podcasts/share_link',
-    'account': 'subscription/status'
+    'account': 'subscription/status',
+    'upload': 'files/upload/request',
+    'files': 'files'
 }
 
 
@@ -962,6 +968,69 @@ class Subscription:
         return self._data.get('bundleUuid')
 
 
+class File:
+    def __init__(self, data: dict):
+        self._data = data
+
+    @property
+    def id(self) -> str:
+        return self._data.get('uuid')
+
+    @property
+    def title(self) -> str:
+        return self._data.get('title')
+
+    @property
+    def size(self) -> int:
+        return int(self._data.get('size'))
+
+    @property
+    def content_type(self) -> str:
+        return self._data.get('contentType')
+
+    @property
+    def progress(self) -> int:
+        return int(self._data.get('playedUpTo'))
+
+    @property
+    def progress_modified(self) -> str:
+        return int(self._data.get('playedUpToModified'))
+
+    @property
+    def duration(self) -> int:
+        return int(self._data.get('duration'))
+
+    @property
+    def published(self) -> Union[datetime, None]:
+        date = self._data.get('published')
+        if not date:
+            return None
+        return datetime.strptime(date_string=date, format="YYYY-MM-DDTHH:mm:ssZ")
+
+    @property
+    def colour(self) -> int:
+        return int(self._data.get('colour'))
+
+    @property
+    def image_url(self) -> str:
+        return self._data.get('imageUrl')
+
+    @property
+    def has_custom_image(self) -> bool:
+        return self._data.get('hasCustomImage')
+
+    @property
+    def modified_at(self) -> Union[datetime, None]:
+        date = self._data.get('modifiedAt')
+        if not date:
+            return None
+        return datetime.strptime(date_string=date, format="YYYY-MM-DDTHH:mm:ssZ")
+
+    @property
+    def image_status(self) -> int:
+        return self._data.get('imageStatus')
+
+
 class Account:
 
     def __init__(self, data: dict, api):
@@ -990,6 +1059,58 @@ class Account:
         """
         return self._data.get('web')
 
+    @property
+    def _account_file_details(self) -> dict:
+        endpoint = _get_endpoint('files')
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        res = self._api._get_json(url, include_token=True)
+        return res
+
+    @property
+    def account_file_details(self) -> Union[dict, None]:
+        res = self._account_file_details
+        if res:
+            return res.get('account')
+        return None
+
+    @property
+    def files(self) -> List[File]:
+        res = self._account_file_details
+        files = []
+        for file in res.get('files', []):
+            files.append(File(data=file))
+        return files
+
+    def upload_file(self, file_path: str) -> bool:
+        """
+        Upload a file to PocketCasts
+
+        :param file_path: path of file to upload
+        :type file_path: str
+        :return: True if successful, False if unsuccessful
+        :rtype: bool
+        """
+        if not os.path.exists(file_path):
+            raise Exception("File does not exist.")
+        endpoint = _get_endpoint("upload")
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        file_name = ntpath.basename(file_path)
+        mime_type = magic.Magic(mime=True).from_file(filename=file_path)
+        file_size = os.path.getsize(file_path)
+        res = self._api._post(url,
+                              data={
+                                  'title': file_name,
+                                  'contentType': 'audio/mpeg',
+                                  'hasCustomImage': False,
+                                  'size': file_size
+                              },
+                              files={file_name: open(file_path, 'rb')})
+        if res:
+            return True
+        return False
+
 
 class PocketCast:
     def __init__(self, email: str, password: str):
@@ -1016,8 +1137,9 @@ class PocketCast:
         :return: None
         :rtype: None
         """
+        endpoint = _get_endpoint('login')
         url = _make_url(base=self._api_base,
-                        endpoint="user/login")
+                        endpoint=endpoint)
         json = {'email': self._email,
                 'password': self._password,
                 'scope': 'webplayer'}
@@ -1052,7 +1174,8 @@ class PocketCast:
               url: str,
               params: dict = None,
               data: dict = None,
-              json: dict = None) -> requests.Response:
+              json: dict = None,
+              files: dict = None) -> requests.Response:
         """
         Send a POST request to the PocketCasts API
 
@@ -1064,6 +1187,8 @@ class PocketCast:
         :type data: dict
         :param json: POST request JSON body
         :type json: dict
+        :param files: Files to send with POST request
+        :type files: dict
         :return: API response
         :rtype: requests.Response
         """
@@ -1072,6 +1197,7 @@ class PocketCast:
                                       params=params,
                                       data=data,
                                       json=json,
+                                      files=files,
                                       headers=header)
         return response
 
