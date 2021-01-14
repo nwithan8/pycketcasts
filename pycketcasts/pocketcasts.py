@@ -18,6 +18,7 @@ endpoints = {
     'networks': 'network_list_v2',
     'popular': 'popular',
     'trending': 'trending',
+    'episode': 'user/podcast/episode',
     'episodes': 'user/podcast/episodes',
     'subscribe': 'user/podcast/subscribe',
     'unsubscribe': 'user/podcast/unsubscribe',
@@ -26,7 +27,8 @@ endpoints = {
     'up_next': 'up_next/list',
     'play_status': 'sync/update_episode',
     'play_next': 'up_next/play_next',
-    'play_last': 'up_next/play_last'
+    'play_last': 'up_next/play_last',
+    'share': 'podcasts/share_link'
 }
 
 
@@ -57,6 +59,24 @@ class Episode:
         if not self._podcast:
             self._podcast = api.get_podcast_by_id(podcast_id=self.podcast_id)
         self._api = api
+
+    @property
+    def share_link(self) -> Union[str, None]:
+        """
+        Get share link for this episode
+
+        :return: share link
+        :rtype: str
+        """
+        endpoint = _get_endpoint("share")
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        data = self._api._post_json(url=url,
+                                    data={'episode': self.id,
+                                          'podcast': self.podcast_id})
+        if data:
+            return data.get('url')
+        return None
 
     @property
     def podcast(self):
@@ -205,7 +225,7 @@ class Episode:
 
         :rtype: str
         """
-        return self._data.get('podcastUuid')
+        return self._data.get('podcastUuid') if self._data.get('podcastUuid') else self.podcast.id
 
     @property
     def podcast_title(self) -> str:
@@ -229,6 +249,30 @@ class Episode:
         data = self._api._get_json(url=url, include_token=True)
         return data.get('show_notes', "")
 
+    def update_progress(self, progress: int) -> bool:
+        """
+        Update progress in this episode
+
+        :param progress: Episode progress in seconds
+        :type progress: int
+        :return: True if successful, False if unsuccessful
+        :rtype: bool
+        """
+        if progress > self.duration:
+            raise Exception("Cannot update with progress longer than episode duration")
+        endpoint = _get_endpoint("play_status")
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        if self._api._post(url=url,
+                           data={'uuid': self.id,
+                                 'podcast': self.podcast_id,
+                                 'status': 2,
+                                 'position': progress
+                                 }
+                           ):
+            return True
+        return False
+
     def mark_played(self) -> bool:
         """
         Mark this episode as played
@@ -241,7 +285,7 @@ class Episode:
                         endpoint=endpoint)
         if self._api._post(url=url,
                            data={'uuid': self.id,
-                                 'podcast': self.podcast_id if self.podcast_id else self.podcast.id,
+                                 'podcast': self.podcast_id,
                                  'status': 3
                                  }
                            ):
@@ -260,7 +304,7 @@ class Episode:
                         endpoint=endpoint)
         if self._api._post(url=url,
                            data={'uuid': self.id,
-                                 'podcast': self.podcast_id if self.podcast_id else self.podcast.id,
+                                 'podcast': self.podcast_id,
                                  'status': 1,
                                  'position': 0
                                  }
@@ -279,7 +323,7 @@ class Episode:
         url = _make_url(base=self._api._api_base, endpoint=endpoint)
         if self._api._post(url=url,
                            json={"uuid": self.id,
-                                 "podcast": self.podcast_id if self.podcast_id else self.podcast.id,
+                                 "podcast": self.podcast_id,
                                  "star": True}
                            ):
             return True
@@ -297,7 +341,7 @@ class Episode:
                         endpoint=endpoint)
         if self._api._post(url=url,
                            json={"uuid": self.id,
-                                 "podcast": self.podcast_id if self.podcast_id else self.podcast.id,
+                                 "podcast": self.podcast_id,
                                  "star": False}
                            ):
             return True
@@ -315,7 +359,7 @@ class Episode:
         if self._api._post(url=url,
                            data={'episodes': [
                                {'uuid': self.id,
-                                'podcast': self.podcast_id if self.podcast_id else self.podcast.id
+                                'podcast': self.podcast_id
                                 }
                            ],
                                'archive': True}):
@@ -335,7 +379,7 @@ class Episode:
         if self._api._post(url=url,
                            data={'episodes': [
                                {'uuid': self.id,
-                                'podcast': self.podcast_id if self.podcast_id else self.podcast.id
+                                'podcast': self.podcast_id
                                 }
                            ],
                                'archive': False}):
@@ -356,7 +400,7 @@ class Episode:
                                  'episode': {'uuid': self.id,
                                              'title': self.title,
                                              'url': self.url,
-                                             'podcast': self.podcast_id if self.podcast_id else self.podcast.id,
+                                             'podcast': self.podcast_id,
                                              'published': self.published_date
                                              }
                                  }
@@ -378,7 +422,7 @@ class Episode:
                                  'episode': {'uuid': self.id,
                                              'title': self.title,
                                              'url': self.url,
-                                             'podcast': self.podcast_id if self.podcast_id else self.podcast.id,
+                                             'podcast': self.podcast_id,
                                              'published': self.published_date
                                              }
                                  }
@@ -386,16 +430,9 @@ class Episode:
             return True
         return False
 
-    """
-    @property
-    def full_details(self):
-        url = f"https://podcasts.pocketcasts.com/{self.podcast.uuid}/episodes_full_{self.uuid}.json"
-        return self._api._get_json(url=url)
-    """
-
 
 class Podcast:
-    def __init__(self, data: dict, api):
+    def __init__(self, data: dict, api, extended_json: dict = {}, full_item: bool = False):
         """
         Interact with a specific podcast
 
@@ -406,6 +443,47 @@ class Podcast:
         """
         self._data = data
         self._api = api
+        self._extended_json = extended_json
+        self._full_item = full_item
+
+    def _get_full_podcast_object(self):
+        """
+        Reload this Podcast object with all data
+
+        :return: None
+        :rtype: None
+        """
+        data = self._api._get_podcast_data_by_id(podcast_id=self.id)
+        self.__init__(data=data, api=self._api, full_item=True)
+
+    def get_episode_by_id(self, episode_id: str) -> Union[Episode, None]:
+        """
+        Get an episode of this podcast by its ID
+
+        :param episode_id: ID of episode
+        :type episode_id: str
+        :return: Episode object or None if not found
+        :rtype: Episode
+        """
+        return self._api.get_episode_by_id(episode_id=episode_id, podcast_id=self.id)
+
+    @property
+    def share_link(self) -> Union[str, None]:
+        """
+        Get share link for this podcast
+
+        :return: share link
+        :rtype: str
+        """
+        endpoint = _get_endpoint("share")
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        data = self._api._post_json(url=url,
+                                    data={'episode': "",
+                                          'podcast': self.id})
+        if data:
+            return data.get('url')
+        return None
 
     @property
     def title(self) -> str:
@@ -433,6 +511,119 @@ class Podcast:
         :rtype: str
         """
         return self._data.get('description')
+
+    @property
+    def episode_frequency(self) -> str:
+        """
+        Get episode frequency
+
+        :rtype: str
+        """
+        return self._extended_json.get('episode_frequency')
+
+    @property
+    def next_episode_date(self) -> Union[datetime, None]:
+        """
+        Estimated date for next episode
+
+        :rtype: datetime.datetime
+        """
+        date = self._extended_json.get('estimated_next_episode_at')
+        if not date:
+            return None
+        return datetime.strptime(date_string=date, format="YYYY-MM-DDTHH:mm:ssZ")
+
+    @property
+    def has_seasons(self) -> bool:
+        """
+        Get whether the podcast has seasons
+
+        :rtype: bool
+        """
+        return self._extended_json.get('has_seasons')
+
+    @property
+    def season_count(self) -> int:
+        """
+        Get podcast season count
+
+        :rtype: int
+        """
+        return self._extended_json.get('season_count')
+
+    @property
+    def episode_count(self) -> int:
+        """
+        Get podcast episode count
+
+        :rtype: int
+        """
+        return self._extended_json.get('episode_count')
+
+    @property
+    def has_more_episodes(self) -> bool:
+        """
+        Get whether the podcast has more episodes
+
+        :rtype: bool
+        """
+        return self._extended_json.get('has_more_episodes')
+
+    @property
+    def category_name(self) -> str:
+        """
+        Get podcast category name
+
+        :rtype: str
+        """
+        return self._data.get('category')
+
+    @property
+    def category(self):
+        """
+        Get podcast category
+
+        :rtype: Category
+        """
+        if self.category_name:
+            return self._api.category(category_name=self.category_name)
+        return None
+
+    @property
+    def is_audio(self) -> bool:
+        """
+        Get whether the podcast is audio
+
+        :rtype: bool
+        """
+        return self._data.get('audio', True)
+
+    @property
+    def show_type(self) -> str:
+        """
+        Get podcast show type (i.e. episodic)
+
+        :rtype: str
+        """
+        return self._data.get('show_type')
+
+    @property
+    def paid(self) -> bool:
+        """
+        Get whether the podcast is paid
+
+        :rtype: bool
+        """
+        return False if self._data.get('paid', 0) == 0 else True
+
+    @property
+    def licensing(self) -> bool:
+        """
+        Get whether the podcast is licensed
+
+        :rtype: bool
+        """
+        return False if self._data.get('paid', 0) == 0 else True
 
     @property
     def feed(self) -> str:
@@ -569,6 +760,75 @@ class Category:
         url = self.source.replace('[regionCode]', region)
         data = self._api._get_json(url=url)
         return self._api._make_podcasts(json_data=data)
+
+
+class Stats:
+    def __init__(self, data: dict):
+        """
+        Interact with your PocketCasts statistics
+
+        :param data: JSON data for statistics
+        :type data: dict
+        """
+        self._data = data
+
+    @property
+    def silence_time_removed(self) -> int:
+        """
+        Get how many seconds of silence have been removed
+
+        :rtype: int
+        """
+        return int(self._data.get('timeSilenceRemoval'))
+
+    @property
+    def time_skipped(self) -> int:
+        """
+        Get how many seconds you have skipped
+
+        :rtype: int
+        """
+        return int(self._data.get('timeSkipping'))
+
+    @property
+    def intro_time_skipped(self) -> int:
+        """
+        Get how many seconds of intro you have skipped
+
+        :rtype: int
+        """
+        return int(self._data.get('timeIntroSkipping'))
+
+    @property
+    def time_variable_speed(self) -> int:
+        """
+        Get how many seconds you have used variable speed
+
+        :rtype: int
+        """
+        return int(self._data.get('timeVariableSpeed'))
+
+    @property
+    def time_listened(self) -> int:
+        """
+        Get how many seconds you have listened
+
+        :rtype: int
+        """
+        return int(self._data.get('timeListened'))
+
+    @property
+    def starting_date(self) -> Union[datetime, None]:
+        """
+        Get when these stats started
+
+        :rtype: datetime.datetime
+        """
+        date = self._data.get('timesStartedAt')
+        if not date:
+            return None
+        return datetime.strptime(date_string=date, format="YYYY-MM-DDTHH:mm:ssZ")
+
 
 
 class Account:
@@ -800,10 +1060,12 @@ class PocketCast:
 
         :param json_data: Podcast JSON data
         :type json_data: dict
-        :return: Podcast objects
+        :return: Podcast object
         :rtype: Podcast
         """
-        return Podcast(data=json_data['podcast'], api=self)
+        if json_data.get('podcast'):
+            return Podcast(data=json_data['podcast'], extended_json=json_data, api=self)
+        return Podcast(data=json_data, api=self)
 
     def _make_podcasts(self,
                        json_data: dict) -> List[Podcast]:
@@ -818,8 +1080,23 @@ class PocketCast:
         podcasts = []
         if json_data and json_data.get('podcasts'):
             for pod in json_data['podcasts']:
-                podcasts.append(Podcast(data=pod, api=self))
+                podcasts.append(self._make_podcast(json_data=pod))
         return podcasts
+
+    def _make_episode(self,
+                      json_data: dict,
+                      podcast: Podcast = None) -> Episode:
+        """
+        Construct an ``Episode`` object from JSON data
+
+        :param json_data: Episode JSON data
+        :type json_data: dict
+        :return: Episode object
+        :rtype: Episode
+        """
+        if json_data.get('episode'):
+            json_data = json_data['episode']
+        return Episode(data=json_data, podcast=podcast, api=self)
 
     def _make_episodes(self,
                        json_data: dict,
@@ -835,10 +1112,19 @@ class PocketCast:
         episodes = []
         if json_data and json_data.get('episodes'):
             for ep in json_data['episodes']:
-                episodes.append(Episode(data=ep,
-                                        podcast=podcast,
-                                        api=self))
+                episodes.append(self._make_episode(json_data=ep, podcast=podcast))
         return episodes
+
+    def _make_category(self, json_data: dict) -> Category:
+        """
+        Construct a ``Category`` object from JSON data
+
+        :param json_data: Category JSON data
+        :type json_data: dict
+        :return: Category object
+        :rtype: Category
+        """
+        return Category(data=json_data, api=self)
 
     def _make_categories(self, json_data: dict) -> List[Category]:
         """
@@ -852,8 +1138,7 @@ class PocketCast:
         categories = []
         if json_data:
             for cat in json_data:
-                categories.append(Category(data=cat,
-                                           api=self))
+                categories.append(self._make_category(json_data=json_data))
         return categories
 
     @property
@@ -872,7 +1157,7 @@ class PocketCast:
                        api=self)
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> Union[Stats, None]:
         """
         Get PocketCasts statistics
 
@@ -882,7 +1167,10 @@ class PocketCast:
         endpoint = _get_endpoint("stats")
         url = _make_url(base=self._api_base,
                         endpoint=endpoint)
-        return self._post_json(url=url)
+        data = self._post_json(url=url)
+        if data:
+            return Stats(data=data)
+        return None
 
     @property
     def subscriptions(self) -> List[Podcast]:
@@ -986,6 +1274,19 @@ class PocketCast:
         data = self._post_json(url=url)
         return self._make_episodes(json_data=data)
 
+    def _get_podcast_data_by_id(self, podcast_id: str) -> dict:
+        """
+        Get a podcast's data by its ID
+
+        :param podcast_id: ID of podcast
+        :type podcast_id: str
+        :return: JSON data
+        :rtype: dict
+        """
+        url = f"https://podcast-api.pocketcasts.com/podcast/full/{podcast_id}"
+        data = self._get_json(url=url)
+        return data
+
     def get_podcast_by_id(self, podcast_id: str) -> Union[Podcast, None]:
         """
         Get a podcast by its ID
@@ -995,10 +1296,46 @@ class PocketCast:
         :return: Podcast or None if not found
         :rtype: Podcast
         """
-        url = f"https://podcast-api.pocketcasts.com/podcast/full/{podcast_id}"
-        data = self._get_json(url=url)
+        data = self._get_podcast_data_by_id(podcast_id=podcast_id)
         if data and data.get('podcast'):
             return self._make_podcast(json_data=data)
+        return None
+
+    def _get_episode_data_by_id(self, episode_id: str, podcast_id: str) -> dict:
+        """
+        Get an episode's data by its ID
+
+        :param episode_id: ID of episode
+        :type episode_id: str
+        :param podcast_id: ID of podcast
+        :type podcast_id: str
+        :return: JSON data
+        :rtype: dict
+        """
+        endpoint = _get_endpoint("episode")
+        url = _make_url(base=self._api_base,
+                        endpoint=endpoint)
+        data = self._post_json(url=url,
+                               data={'uuid': episode_id,
+                                     'podcast': podcast_id}
+                               )
+        return data
+
+    def get_episode_by_id(self, episode_id: str, podcast_id: str) -> Union[Episode, None]:
+        """
+        Get an episode by its ID
+
+        :param episode_id: ID of episode
+        :type episode_id: str
+        :param podcast_id: ID of podcast
+        :type podcast_id: str
+        :return: JSON data
+        :rtype: dict
+        """
+        data = self._get_episode_data_by_id(episode_id=episode_id, podcast_id=podcast_id)
+        if data:
+            podcast = self.get_podcast_by_id(podcast_id=podcast_id)
+            return self._make_episode(json_data=data, podcast=podcast)
         return None
 
     def search(self, keyword: str) -> List[Podcast]:
