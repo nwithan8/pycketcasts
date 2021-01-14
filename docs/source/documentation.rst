@@ -49,6 +49,14 @@ The ``Stats`` class
    :undoc-members:
    :show-inheritance:
 
+The ``Files`` class
+*************************
+
+.. autoclass:: pycketcasts.pocketcasts.Files
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 The ``Category`` class
 *************************
 
