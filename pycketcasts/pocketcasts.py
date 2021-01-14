@@ -28,7 +28,8 @@ endpoints = {
     'play_status': 'sync/update_episode',
     'play_next': 'up_next/play_next',
     'play_last': 'up_next/play_last',
-    'share': 'podcasts/share_link'
+    'share': 'podcasts/share_link',
+    'account': 'subscription/status'
 }
 
 
@@ -830,57 +831,63 @@ class Stats:
         return datetime.strptime(date_string=date, format="YYYY-MM-DDTHH:mm:ssZ")
 
 
+class Subscription:
+    def __init__(self, data: dict):
+        """
+        Interact with a PocketCasts subscription
 
-class Account:
-
-    def __init__(self, data: dict, api):
+        :param data: JSON data from subscription
+        :type data: dict
+        """
         self._data = data
-        self._api = api
 
     @property
-    def paid(self) -> bool:
-        """
-        Get whether this account if Premium
-
-        :rtype: bool
-        """
-        return True if self._data.get('paid') == 1 else False
-
-    @property
-    def platform(self) -> str:
+    def platform(self) -> int:
         """
         Get account platform
 
-        :rtype: str
+        :rtype: int
         """
         return self._data.get('platform')
 
     @property
-    def expiry_date(self) -> str:
+    def type(self) -> int:
         """
-        Get expiry date
+        Get account type
 
-        :rtype: str
+        :rtype: int
         """
-        return self._data.get('expiryDate')
+        return self._data.get('type')
 
     @property
-    def auto_renewing(self) -> str:
+    def frequency(self) -> int:
+        """
+        Get account frequency
+
+        :rtype: int
+        """
+        return self._data.get('frequency')
+
+    @property
+    def auto_renewing(self) -> bool:
         """
         Get auto-renewing status
 
-        :rtype: str
+        :rtype: bool
         """
         return self._data.get('autoRenewing')
 
     @property
-    def gift_days(self) -> int:
+    def expiry_date(self) -> Union[datetime, None]:
         """
-        Get gift days
+        Get expiry date
 
-        :rtype: int
+        :rtype: datetime.datetime
         """
-        return self._data.get('giftDays')
+        date = self._data.get('expiryDate')
+        if not date:
+            return None
+        return datetime.strptime(date_string=date, format="YYYY-MM-DDTHH:mm:ssZ")
 
     @property
     def cancel_url(self) -> str:
@@ -901,20 +908,85 @@ class Account:
         return self._data.get('updateURL')
 
     @property
-    def frequency(self) -> str:
+    def plan(self) -> str:
         """
-        Get frequency
+        Get account plan type
 
         :rtype: str
         """
-        return self._data.get('frequency')
+        return self._data.get('plan')
 
     @property
-    def web(self) -> str:
+    def index(self) -> int:
         """
-        Get web URL
+        Get account index
+
+        :rtype: int
+        """
+        return self._data.get('index')
+
+    @property
+    def gift_days(self) -> int:
+        """
+        Get gift days
+
+        :rtype: int
+        """
+        return self._data.get('giftDays')
+
+    @property
+    def paid(self) -> bool:
+        """
+        Get whether this account if Premium
+
+        :rtype: bool
+        """
+        return True if self._data.get('paid') == 1 else False
+
+    @property
+    def web_status(self) -> int:
+        """
+        Get account web status
+
+        :rtype: int
+        """
+        return self._data.get('webStatus')
+
+    @property
+    def bundle_id(self) -> str:
+        """
+        Get account bundle ID
 
         :rtype: str
+        """
+        return self._data.get('bundleUuid')
+
+
+class Account:
+
+    def __init__(self, data: dict, api):
+        self._data = data
+        self._api = api
+
+    @property
+    def subscriptions(self) -> List[Subscription]:
+        """
+        Get your PocketCasts subscriptions
+
+        :return: list of PocketCasts subscriptions
+        :rtype: list[Subscription]
+        """
+        subscriptions = []
+        for sub in self._data.get('subscriptions', []):
+            subscriptions.append(Subscription(data=sub))
+        return subscriptions
+
+    @property
+    def web(self) -> dict:
+        """
+        Get web info
+
+        :rtype: dict
         """
         return self._data.get('web')
 
@@ -1149,8 +1221,9 @@ class PocketCast:
         :return: PocketCasts user account
         :rtype: Account
         """
+        endpoint = _get_endpoint("account")
         url = _make_url(base=self._api_base,
-                        endpoint="/subscription/status")
+                        endpoint=endpoint)
         data = self._get_json(url=url,
                               include_token=True)
         return Account(data=data,
