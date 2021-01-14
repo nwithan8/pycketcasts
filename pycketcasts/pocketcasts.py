@@ -972,6 +972,38 @@ class File:
     def __init__(self, data: dict):
         self._data = data
 
+    def delete(self) -> bool:
+        endpoint = f"{self._api._api_base}/files/{self.id}"
+        res = self._api._delete(url=endpoint)
+        if res:
+            return True
+        return False
+
+    def update(self, name: str = None, colour: int = None) -> bool:
+        data = {
+            'uuid': self.id,
+            'title': name if name else self.title,
+            'colour': colour if colour else self.colour
+        }
+        endpoint = _get_endpoint('files')
+        url = _make_url(base=self._api._api_base,
+                        endpoint=endpoint)
+        res = self._api._post(url=url,
+                              data=data)
+        if res:
+            return True
+        return False
+
+    # TODO Download file
+
+    # TODO Play next
+
+    # TODO Play last
+
+    # TODO Mark as played
+
+    # TODO Mark as unplayed
+
     @property
     def id(self) -> str:
         return self._data.get('uuid')
@@ -1199,6 +1231,37 @@ class PocketCast:
                                       json=json,
                                       files=files,
                                       headers=header)
+        return response
+
+    def _delete(self,
+              url: str,
+              params: dict = None,
+              data: dict = None,
+              json: dict = None,
+              files: dict = None) -> requests.Response:
+        """
+        Send a DELETE request to the PocketCasts API
+
+        :param url: API endpoint
+        :type url: str
+        :param params: DELETE request parameters
+        :type params: dict
+        :param data: POST request body
+        :type data: dict
+        :param json: DELETE request JSON body
+        :type json: dict
+        :param files: Files to send with DELETE request
+        :type files: dict
+        :return: API response
+        :rtype: requests.Response
+        """
+        header = {'Authorization': f'Bearer {self._token}'} if self._token else None
+        response = self._session.delete(url=url,
+                                        params=params,
+                                        data=data,
+                                        json=json,
+                                        files=files,
+                                        headers=header)
         return response
 
     def _get_json(self,
