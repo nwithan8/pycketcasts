@@ -33,6 +33,14 @@ The ``Account`` class
    :undoc-members:
    :show-inheritance:
 
+The ``Stats`` class
+*************************
+
+.. autoclass:: pycketcasts.pocketcasts.Stats
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 The ``Category`` class
 *************************
 
