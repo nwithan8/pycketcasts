@@ -12,10 +12,10 @@
 #
 import os
 import sys
+
 sys.path.insert(0, os.path.abspath('../..'))
 
 from pycketcasts._info import __version__, __copyright__, __title__, __author__
-
 
 # -- Project information -----------------------------------------------------
 
@@ -26,7 +26,6 @@ author = __author__
 # The full version, including alpha/beta/rc tags
 release = __version__
 
-
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
@@ -34,7 +33,7 @@ release = __version__
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    #'sphinx_autodoc_typehints'
+    # 'sphinx_autodoc_typehints'
 ]
 
 # Autodoc options
@@ -48,12 +47,10 @@ pygments_style = 'sphinx'
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
-
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
-
 
 # -- Options for HTML output -------------------------------------------------
 
