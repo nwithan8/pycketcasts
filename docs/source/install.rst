@@ -18,5 +18,5 @@ Import the ``PocketCast`` class from the pocketcasts module
 
 .. code-block:: python
 
-    from pocketcasts import PocketCast
-    dtv = API(email="MY_EMAIL", password="MY_PASSWORD")
+    from pycketcasts import PocketCast
+    api = PocketCast(email="MY_EMAIL", password="MY_PASSWORD")
